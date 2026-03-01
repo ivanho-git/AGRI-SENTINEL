@@ -30,6 +30,7 @@ app = FastAPI(
     redoc_url=None,
 )
 templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Add session middleware — key from env, fallback for local dev
 SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "agri-sentinel-super-secret-key-2026-do-not-change")
@@ -283,6 +284,13 @@ async def get_current_user_with_profile(request: Request):
 # ================= SESSION STORAGE =================
 # In-memory session storage (use Redis in production)
 sessions = {}
+
+# ================= LANDING PAGE =================
+
+@app.get("/home", response_class=HTMLResponse)
+def home_page(request: Request):
+    """Render public landing page"""
+    return templates.TemplateResponse("home.html", {"request": request})
 
 # ================= AUTH ROUTES =================
 
@@ -842,7 +850,13 @@ async def get_soil_data(request: Request, polygon_id: str = None):
 # ================= HOME =================
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
+def root(request: Request):
+    """Root URL always redirects to the landing/home page"""
+    return RedirectResponse(url="/home", status_code=303)
+
+@app.get("/scan", response_class=HTMLResponse)
+def scan_page(request: Request):
+    """Render the crop disease scanning tool"""
     # Check if user is authenticated
     user_id = request.session.get("user_id")
     if not user_id:
