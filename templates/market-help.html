@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🎤 Market Help — AGRI-SENTINEL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{
+            --green-800:#1b5e20;--green-700:#2e7d32;--green-600:#388e3c;
+            --green-500:#43a047;--green-400:#66bb6a;--green-300:#81c784;--green-100:#e8f5e9;--green-50:#f1f8e9;
+            --soil-100:#efebe9;--sun-100:#fffde7;
+            --red-500:#ef4444;
+            --bg:#f7f9f7;--card:#ffffff;
+            --text:#1a2e1a;--text2:#3e5e3e;--text3:#7a9a7a;--text-faint:#b0c4b0;
+            --border:#d5e5d0;--border-light:#e8f0e5;
+            --shadow-xs:0 1px 2px rgba(30,70,30,.04);
+            --shadow-sm:0 2px 8px rgba(30,70,30,.06);
+            --r:12px;--r-lg:16px;--r-xl:24px;--r-full:9999px;
+        }
+        body{font-family:'Inter',system-ui,sans-serif;background:#eef3eb;color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased;position:relative}
+        body::before{content:'';position:fixed;inset:0;background:
+            radial-gradient(ellipse at 20% 30%,rgba(102,187,106,.08) 0%,transparent 50%),
+            radial-gradient(ellipse at 80% 70%,rgba(249,168,37,.06) 0%,transparent 50%),
+            linear-gradient(175deg,#e8f5e9 0%,#f1f8e9 40%,#fafaf5 70%,#fffde7 100%);
+            pointer-events:none;z-index:0}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        @keyframes pulse-ring{0%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}100%{box-shadow:0 0 0 20px rgba(239,68,68,0)}}
+        @keyframes bounce-dot{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+
+        .topbar{background:linear-gradient(135deg,#14532d 0%,var(--green-800) 40%,var(--green-600) 100%);padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 16px rgba(20,83,45,.25)}
+        .topbar-logo{color:#fff;font-size:14px;font-weight:800;letter-spacing:-.3px;text-decoration:none;display:flex;align-items:center;gap:8px}
+        .topbar-logo .dot{width:6px;height:6px;background:var(--green-400);border-radius:50%}
+        .topbar-nav{display:flex;gap:5px}
+        .topbar-nav a,.topbar-nav button{font-family:inherit;font-size:11px;font-weight:600;padding:5px 11px;border-radius:var(--r-full);border:1.5px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.9);text-decoration:none;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:3px}
+        .topbar-nav a:hover,.topbar-nav button:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.6)}
+        .topbar-nav .active{background:#fff;color:var(--green-700);border-color:#fff}
+        .topbar-nav .logout{border-color:rgba(255,180,180,.4);color:rgba(255,200,200,.9)}
+
+        .lang-strip{background:var(--card);border-bottom:1px solid var(--border-light);padding:7px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+        .lang-strip label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px}
+        .lang-strip select{font-family:inherit;font-size:13px;font-weight:600;padding:5px 8px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);outline:none;cursor:pointer}
+
+        .chat-container{flex:1;display:flex;flex-direction:column;overflow:hidden;max-width:720px;width:100%;margin:0 auto;position:relative;z-index:1}
+        .chat-scroll{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch}
+
+        .welcome{background:linear-gradient(160deg,var(--green-100),var(--green-50),#fffde7,#e1f5fe);border:1.5px solid var(--green-300);border-radius:var(--r-xl);padding:28px 24px;text-align:center;animation:fadeIn .5s ease;position:relative;overflow:hidden;z-index:1}
+        .welcome::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:rgba(249,168,37,.08);border-radius:50%;pointer-events:none}
+        .welcome .icon-row{font-size:36px;margin-bottom:12px;letter-spacing:4px}
+        .welcome h2{font-size:18px;font-weight:800;color:var(--green-800);margin-bottom:6px}
+        .welcome p{font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:16px}
+        .welcome p strong{color:var(--green-700)}
+        .chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+        .chip{font-family:inherit;padding:9px 16px;background:var(--card);border:1.5px solid var(--border);border-radius:var(--r-full);font-size:12px;font-weight:600;color:var(--text);cursor:pointer;transition:.2s;box-shadow:var(--shadow-xs)}
+        .chip:hover{border-color:var(--green-500);color:var(--green-700);background:var(--green-50)}
+        .chip:active{transform:scale(.97)}
+
+        .msg{max-width:84%;animation:fadeIn .3s ease both;display:flex;flex-direction:column;gap:3px}
+        .msg.user{align-self:flex-end}
+        .msg.bot{align-self:flex-start}
+        .bubble{padding:14px 18px;border-radius:var(--r-lg);font-size:15px;line-height:1.65;word-wrap:break-word}
+        .msg.user .bubble{background:linear-gradient(135deg,#14532d,var(--green-700),var(--green-500));color:#fff;border-bottom-right-radius:4px;box-shadow:0 3px 12px rgba(46,125,50,.25)}
+        .msg.bot .bubble{background:rgba(255,255,255,.92);backdrop-filter:blur(8px);color:var(--text);border:1px solid var(--border);border-left:3px solid var(--green-400);border-bottom-left-radius:4px;box-shadow:var(--shadow-sm)}
+        .msg-time{font-size:10px;color:var(--text-faint);padding:0 6px}
+        .msg.user .msg-time{text-align:right}
+        .transcript-tag{font-size:11px;color:var(--text3);font-style:italic;background:var(--green-50);padding:4px 12px;border-radius:8px;margin-bottom:4px;border:1px solid var(--border-light)}
+
+        .play-btn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:7px 16px;background:var(--green-100);border:1.5px solid var(--green-400);color:var(--green-700);border-radius:var(--r-full);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:.2s}
+        .play-btn:hover,.play-btn.playing{background:var(--green-700);color:#fff;border-color:var(--green-700)}
+
+        .typing{align-self:flex-start;display:none;padding:0 16px 8px;animation:fadeIn .2s ease}
+        .typing.show{display:block}
+        .typing-inner{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);border-bottom-left-radius:4px;padding:14px 22px;display:inline-flex;gap:6px;box-shadow:var(--shadow-xs)}
+        .typing-inner span{width:7px;height:7px;background:var(--green-400);border-radius:50%;display:block}
+        .typing-inner span:nth-child(1){animation:bounce-dot 1.4s infinite ease-in-out -.32s}
+        .typing-inner span:nth-child(2){animation:bounce-dot 1.4s infinite ease-in-out -.16s}
+        .typing-inner span:nth-child(3){animation:bounce-dot 1.4s infinite ease-in-out}
+
+        .input-bar{flex-shrink:0;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(241,248,233,.9));border-top:1px solid var(--border-light);padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 -2px 12px rgba(0,0,0,.04);position:relative;z-index:1}
+        .input-bar input{flex:1;font-family:inherit;font-size:16px;padding:13px 18px;border:1.5px solid var(--border);border-radius:var(--r-full);background:var(--bg);color:var(--text);outline:none;transition:.2s}
+        .input-bar input:focus{border-color:var(--green-500);box-shadow:0 0 0 3px rgba(67,160,71,.1)}
+        .input-bar input::placeholder{color:var(--text-faint)}
+        .btn-send{width:48px;height:48px;border-radius:50%;border:none;background:var(--green-700);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;flex-shrink:0}
+        .btn-send:hover{background:var(--green-600);transform:scale(1.05)}
+        .btn-send:disabled{background:var(--border);cursor:not-allowed;transform:none}
+        .btn-mic{width:52px;height:52px;border-radius:50%;border:2.5px solid var(--green-600);background:var(--green-100);color:var(--green-700);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;flex-shrink:0}
+        .btn-mic:hover{background:var(--green-700);color:#fff;border-color:var(--green-700)}
+        .btn-mic.recording{background:var(--red-500);border-color:var(--red-500);color:#fff;animation:pulse-ring 1.5s infinite}
+        .btn-mic:disabled{opacity:.35;cursor:not-allowed;animation:none}
+
+        @media(max-width:480px){
+            .topbar{height:48px;padding:0 10px}
+            .topbar-logo{font-size:12px}
+            .topbar-nav a,.topbar-nav button{font-size:10px;padding:4px 8px}
+            .chat-scroll{padding:12px 10px;gap:10px}
+            .welcome{padding:22px 16px}
+            .welcome .icon-row{font-size:30px}
+            .welcome h2{font-size:16px}
+            .msg{max-width:90%}
+            .bubble{padding:12px 14px;font-size:14px}
+            .input-bar{padding:8px}
+            .input-bar input{padding:11px 14px;font-size:15px}
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <a href="/dashboard" class="topbar-logo">🌱 AGRI-SENTINEL <span class="dot"></span></a>
+        <nav class="topbar-nav">
+            <a href="/">🔬 Scan</a>
+            <a href="/dashboard">🏠</a>
+            <a href="/history">📊 History</a>
+            <a href="/market-help" class="active">🎤 Market</a>
+            <button class="logout" onclick="logout()">🚪</button>
+        </nav>
+    </header>
+    <div class="lang-strip">
+        <label>🌐 Language</label>
+        <select id="langSelect">
+            <option value="hi-IN">🇮🇳 हिंदी</option>
+            <option value="en-IN">🇬🇧 English</option>
+            <option value="ta-IN">தமிழ்</option>
+            <option value="te-IN">తెలుగు</option>
+            <option value="kn-IN">ಕನ್ನಡ</option>
+            <option value="ml-IN">മലയാളം</option>
+            <option value="mr-IN">मराठी</option>
+            <option value="gu-IN">ગુજરાતી</option>
+            <option value="bn-IN">বাংলা</option>
+            <option value="pa-IN">ਪੰਜਾਬੀ</option>
+            <option value="od-IN">ଓଡ଼ିଆ</option>
+        </select>
+    </div>
+    <div class="chat-container">
+        <div class="chat-scroll" id="chatScroll">
+            <div class="welcome">
+                <div class="icon-row">🙏 🌾 🎤</div>
+                <h2>Namaste, {{ profile.farmer_name if profile else 'Farmer' }} ji!</h2>
+                <p>Ask about <strong>crop prices</strong>, <strong>mandis</strong>, <strong>market trends</strong>, or <strong>selling tips</strong>.<br>Type below or tap 🎤 to speak!</p>
+                <div class="chips">
+                    <button class="chip" onclick="ask(this.textContent)">आज प्याज का भाव?</button>
+                    <button class="chip" onclick="ask(this.textContent)">Tomato price today</button>
+                    <button class="chip" onclick="ask(this.textContent)">गेहूं कहां बेचूं?</button>
+                    <button class="chip" onclick="ask(this.textContent)">Best mandi near me</button>
+                </div>
+            </div>
+        </div>
+        <div class="typing" id="typing"><div class="typing-inner"><span></span><span></span><span></span></div></div>
+        <div class="input-bar">
+            <input type="text" id="inp" placeholder="Type your question…" autocomplete="off" enterkeyhint="send">
+            <button class="btn-send" id="sendBtn" onclick="sendText()" title="Send">➤</button>
+            <button class="btn-mic" id="micBtn" onclick="toggleMic()" title="Tap to speak">🎤</button>
+        </div>
+    </div>
+<script>
+const scroll=document.getElementById('chatScroll'),inp=document.getElementById('inp'),sendBtn=document.getElementById('sendBtn'),micBtn=document.getElementById('micBtn'),typing=document.getElementById('typing');
+let busy=false,recording=false,recorder=null,chunks=[],curAudio=null;
+const lang=()=>document.getElementById('langSelect').value;
+const tm=()=>new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+const bot=()=>requestAnimationFrame(()=>scroll.scrollTop=scroll.scrollHeight);
+function addMsg(h,role,pre=''){const d=document.createElement('div');d.className='msg '+role;d.innerHTML=`${pre}<div class="bubble">${h}</div><div class="msg-time">${role==='user'?'🧑‍🌾':'🤖'} ${tm()}</div>`;scroll.appendChild(d);bot();return d}
+function addPlay(m,b64){if(!b64)return;const b=document.createElement('button');b.className='play-btn';b.innerHTML='🔊 Listen';b.onclick=()=>play(b64,b);m.querySelector('.bubble').append(document.createElement('br'),b)}
+function play(b64,btn){if(curAudio){curAudio.pause();curAudio=null}try{const a=new Audio('data:audio/wav;base64,'+b64);curAudio=a;if(btn)btn.classList.add('playing');a.onended=a.onerror=()=>{if(btn)btn.classList.remove('playing');curAudio=null};a.play().catch(()=>{if(btn)btn.classList.remove('playing')})}catch(e){}}
+function lock(on){busy=on;sendBtn.disabled=micBtn.disabled=inp.disabled=on;typing.classList.toggle('show',on);bot()}
+async function sendText(){const t=inp.value.trim();if(!t||busy)return;inp.value='';addMsg(t,'user');lock(true);try{const fd=new FormData();fd.append('text',t);fd.append('language',lang());const r=await fetch('/api/market-help',{method:'POST',body:fd});const d=await r.json();if(d.success){const m=addMsg(d.reply_text,'bot');addPlay(m,d.reply_audio)}else{addMsg('⚠️ '+(d.error||'Something went wrong.'),'bot')}}catch(e){addMsg('⚠️ Network error.','bot')}lock(false);inp.focus()}
+function ask(t){inp.value=t;sendText()}
+async function toggleMic(){if(busy)return;if(recording){stopRec();return}try{const stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1,echoCancellation:true,noiseSuppression:true}});chunks=[];recorder=new MediaRecorder(stream,{mimeType:'audio/webm;codecs=opus'});recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};recorder.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());if(!chunks.length)return;const blob=new Blob(chunks,{type:'audio/wav'});addMsg('🎤 <em>Voice message</em>','user');lock(true);try{const fd=new FormData();fd.append('audio',blob,'rec.wav');fd.append('language',lang());const r=await fetch('/api/market-help',{method:'POST',body:fd});const d=await r.json();if(d.success){let pre='';if(d.transcript)pre=`<div class="transcript-tag">🗣️ "${d.transcript}"</div>`;const m=addMsg(d.reply_text,'bot',pre);if(d.reply_audio){addPlay(m,d.reply_audio);play(d.reply_audio,m.querySelector('.play-btn'))}}else{addMsg('⚠️ '+(d.error||'Could not process voice.'),'bot')}}catch(e){addMsg('⚠️ Network error.','bot')}lock(false)};recorder.start();recording=true;micBtn.classList.add('recording');micBtn.innerHTML='⬛';setTimeout(()=>{if(recording)stopRec()},7000)}catch(e){addMsg(e.name==='NotAllowedError'?'⚠️ Mic permission denied.':'⚠️ Mic not available.','bot')}}
+function stopRec(){if(recorder&&recorder.state==='recording')recorder.stop();recording=false;micBtn.classList.remove('recording');micBtn.innerHTML='🎤'}
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText()}});
+async function logout(){try{const r=await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();if(d.success)window.location.href=d.redirect}catch(e){window.location.href='/login'}}
+</script>
+</body>
+</html>

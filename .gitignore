@@ -16,7 +16,7 @@ env/
 .vscode/
 *.swp
 
-# Temp / test files
+# Temp / test / debug files
 test_out.txt
 check.txt
 check2.txt
@@ -27,6 +27,9 @@ pip_versions.txt
 flycheck.txt
 flyver.txt
 flyauth.txt
+dbdebug.txt
+dbout.txt
+test_imports.py
 
 # OS
 Thumbs.db

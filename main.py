@@ -42,6 +42,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
 AGROMONITORING_API_KEY = os.environ.get("AGROMONITORING_API_KEY", "")
+SARVAM_API_KEY = os.environ.get("SARVAM_API_KEY", "")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL and SUPABASE_KEY env vars are required. Create a .env file or set them in Render dashboard.")
@@ -61,12 +62,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agri-sentinel")
 
+# ================= PREDICTIONS HELPERS =================
+# predictions table uses farmer_id to link scans to users
+
+def _get_user_predictions(user_id: str, select_cols: str = "*"):
+    """Get all predictions for a user, ordered by newest first."""
+    return supabase.table("predictions") \
+        .select(select_cols) \
+        .eq("farmer_id", str(user_id)) \
+        .order("created_at", desc=True) \
+        .execute()
+
+def _save_prediction(user_id, result: dict):
+    """Save a prediction to the database, linked to the user via farmer_id."""
+    supabase.table("predictions").insert({
+        "farmer_id": str(user_id) if user_id else "ANONYMOUS",
+        "disease": result.get("disease_name", result.get("disease", "Unknown")),
+        "confidence": result.get("confidence_score", result.get("confidence", 0.5)),
+        "container_a_ml": result.get("container_a_ml", 10),
+        "container_b_ml": result.get("container_b_ml", 20),
+        "container_c_ml": result.get("container_c_ml", 30),
+        "mix_time_seconds": result.get("mix_time_seconds", 300),
+    }).execute()
+
 # ================= HEALTH CHECK =================
 
 @app.get("/healthz", include_in_schema=False)
 async def health_check():
     """Health check for Fly.io / load balancers"""
     return {"status": "ok", "service": "agri-sentinel", "version": "2.0.0"}
+
+@app.get("/api/debug-predictions", include_in_schema=False)
+async def debug_predictions(request: Request):
+    """Debug endpoint to check predictions state"""
+    user_id = request.session.get("user_id")
+    try:
+        all_data = supabase.table("predictions").select("id, farmer_id, disease, created_at").order("created_at", desc=True).limit(10).execute()
+        user_data = []
+        if user_id:
+            user_data = supabase.table("predictions").select("id, disease, created_at").eq("farmer_id", str(user_id)).order("created_at", desc=True).limit(5).execute()
+        return {
+            "current_user_id": user_id,
+            "total_rows": len(all_data.data),
+            "user_rows": len(user_data.data) if user_data else 0,
+            "all_rows": all_data.data[:5],
+            "user_predictions": user_data.data[:5] if user_data else []
+        }
+    except Exception as e:
+        return {"error": str(e), "current_user_id": user_id}
+
 
 # ================= PYDANTIC MODELS =================
 
@@ -210,7 +254,10 @@ async def get_current_user(request: Request):
                 detail="User not found. Please login again."
             )
         return user_response.data
+    except HTTPException:
+        raise  # Re-raise auth errors as-is
     except Exception as e:
+        logger.error(f"Auth DB error for user_id={user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication error. Please login again."
@@ -1019,19 +1066,13 @@ async def diagnose(request: Request, user: dict = Depends(get_current_user)):
 
         sessions[session_id]["diagnosis"] = diagnosis
 
-        # Store prediction in database
+        # Store prediction in database linked to user
         try:
-            supabase.table("predictions").insert({
-                "farmer_id": "WEB_USER",
-                "disease": result.get("disease_name", "Unknown"),
-                "confidence": result.get("confidence_score", 0.5),
-                "container_a_ml": result.get("container_a_ml", 10),
-                "container_b_ml": result.get("container_b_ml", 20),
-                "container_c_ml": result.get("container_c_ml", 30),
-                "mix_time_seconds": result.get("mix_time_seconds", 300)
-            }).execute()
+            current_user_id = user.get("id") if user else request.session.get("user_id")
+            _save_prediction(current_user_id, result)
+            logger.info(f"Saved prediction for user={current_user_id}, disease={diagnosis['disease_name']}")
         except Exception as db_error:
-            print(f"Database error: {db_error}")
+            logger.error(f"Database insert error: {db_error}")
 
         return JSONResponse({"success": True, "diagnosis": diagnosis})
 
@@ -1271,15 +1312,9 @@ async def analyze_web(request: Request,
         })
 
     try:
-        supabase.table("predictions").insert({
-            "farmer_id": farmer_id,
-            "disease": result.get("disease", "Unknown"),
-            "confidence": result.get("confidence", 0),
-            "container_a_ml": result.get("container_a_ml", 0),
-            "container_b_ml": result.get("container_b_ml", 0),
-            "container_c_ml": result.get("container_c_ml", 0),
-            "mix_time_seconds": result.get("mix_time_seconds", 0)
-        }).execute()
+        current_user_id = request.session.get("user_id")
+        _save_prediction(current_user_id or farmer_id, result)
+        logger.info(f"Saved analyze-web prediction for user={current_user_id}")
     except Exception as db_error:
         print(f"Database error: {db_error}")
 
@@ -1288,15 +1323,208 @@ async def analyze_web(request: Request,
         "result": result
     })
 
+# ================= MARKET HELP (SARVAM AI VOICE ASSISTANT) =================
+SARVAM_HEADERS = {"api-subscription-key": SARVAM_API_KEY, "Content-Type": "application/json"}
+
+def _sarvam_tts(text: str, lang_code: str) -> str:
+    """Convert text to speech using Sarvam TTS. Returns base64 audio or None."""
+    try:
+        payload = {
+            "inputs": [text[:500]],
+            "target_language_code": lang_code if "-" in lang_code else f"{lang_code}-IN",
+            "speaker": "meera",
+            "model": "bulbul:v1"
+        }
+        resp = requests.post(
+            "https://api.sarvam.ai/text-to-speech",
+            json=payload,
+            headers=SARVAM_HEADERS,
+            timeout=15
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            # Response has "audios" array with base64 strings
+            audios = data.get("audios", [])
+            if audios:
+                return audios[0]
+        else:
+            logger.warning(f"Sarvam TTS {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        logger.warning(f"TTS error: {e}")
+    return None
+
+def _sarvam_stt(audio_b64: str, lang_code: str) -> str:
+    """Convert speech to text using Sarvam STT. Returns transcript or None."""
+    try:
+        payload = {
+            "input": audio_b64,
+            "config": {
+                "language": {"sourceLanguage": lang_code.split("-")[0]},
+                "audioFormat": "wav",
+                "encoding": "base64"
+            }
+        }
+        resp = requests.post(
+            "https://api.sarvam.ai/speech-to-text",
+            json=payload,
+            headers=SARVAM_HEADERS,
+            timeout=15
+        )
+        if resp.status_code == 200:
+            return resp.json().get("transcript", "")
+        else:
+            logger.error(f"Sarvam STT {resp.status_code}: {resp.text[:300]}")
+    except Exception as e:
+        logger.error(f"STT error: {e}")
+    return None
+
+def _llm_respond(user_query: str, farmer_context: str, lang_code: str) -> str:
+    """Get LLM response — tries Sarvam first, falls back to Gemini."""
+    system_prompt = (
+        "You are a helpful agriculture market assistant for Indian farmers. "
+        f"{farmer_context} "
+        "Always: "
+        "- Use simple language that a farmer can understand "
+        "- Keep response under 4 sentences "
+        "- If asked about crop prices, mention price clearly with unit (Rs per kg or quintal) "
+        "- Mention location/mandi if relevant "
+        "- Respond in the same language the farmer used "
+        "- Be warm and respectful "
+        "- If you don't know the exact price, give a reasonable recent range and suggest checking the local mandi"
+    )
+
+    # Try Sarvam LLM first
+    try:
+        llm_payload = {
+            "model": "sarvam-m",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_query}
+            ]
+        }
+        llm_resp = requests.post(
+            "https://api.sarvam.ai/chat/completions",
+            json=llm_payload,
+            headers=SARVAM_HEADERS,
+            timeout=20
+        )
+        if llm_resp.status_code == 200:
+            data = llm_resp.json()
+            reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if reply and reply.strip():
+                logger.info("LLM response from Sarvam")
+                return reply
+        else:
+            logger.warning(f"Sarvam LLM {llm_resp.status_code}: {llm_resp.text[:300]}")
+    except Exception as e:
+        logger.warning(f"Sarvam LLM error: {e}")
+
+    # Fallback to Gemini
+    try:
+        logger.info("Falling back to Gemini for LLM response")
+        gemini_prompt = f"{system_prompt}\n\nFarmer's question: {user_query}"
+        response = model.generate_content(gemini_prompt)
+        reply = response.text.strip()
+        if reply:
+            return reply
+    except Exception as e:
+        logger.error(f"Gemini fallback error: {e}")
+
+    return "Sorry, I couldn't process your question right now. Please try again in a moment."
+
+@app.get("/market-help", response_class=HTMLResponse)
+async def market_help_page(request: Request):
+    """Render Market Help voice assistant page"""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=303)
+    try:
+        user_response = supabase.table("users").select("*").eq("id", user_id).single().execute()
+        if not user_response.data:
+            return RedirectResponse(url="/login", status_code=303)
+        profile = None
+        try:
+            profile_response = supabase.table("farmer_profiles").select("*").eq("user_id", user_id).single().execute()
+            profile = profile_response.data
+        except:
+            pass
+        return templates.TemplateResponse("market-help.html", {
+            "request": request,
+            "user": user_response.data,
+            "profile": profile
+        })
+    except:
+        return RedirectResponse(url="/login", status_code=303)
+
+@app.post("/api/market-help")
+async def api_market_help(
+    request: Request,
+    audio: UploadFile = File(None),
+    text: str = Form(None),
+    language: str = Form("hi-IN"),
+):
+    """Market Help voice assistant — Sarvam AI + Gemini fallback."""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+
+    transcript = text
+    used_voice = False
+
+    # Step 1: If audio, run STT
+    if audio and audio.filename:
+        used_voice = True
+        try:
+            audio_bytes = await audio.read()
+            if len(audio_bytes) < 100:
+                return JSONResponse({"success": False, "error": "Audio too short. Please speak for at least 1 second."})
+            audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+            transcript = _sarvam_stt(audio_b64, language)
+            if not transcript:
+                return JSONResponse({"success": False, "error": "No speech detected. Please speak clearly and try again."})
+        except Exception as e:
+            logger.error(f"Audio processing error: {e}")
+            return JSONResponse({"success": False, "error": "Audio processing failed. Please try typing instead."})
+
+    if not transcript or not transcript.strip():
+        return JSONResponse({"success": False, "error": "Please type a question or use the microphone."})
+
+    # Step 2: Get farmer context
+    farmer_context = ""
+    try:
+        profile_resp = supabase.table("farmer_profiles").select("crop_name, village, district, state").eq("user_id", user_id).single().execute()
+        if profile_resp.data:
+            p = profile_resp.data
+            farmer_context = f"The farmer grows {p.get('crop_name', 'crops')} in {p.get('village', '')}, {p.get('district', '')}, {p.get('state', 'India')}."
+    except:
+        pass
+
+    # Step 3: LLM (Sarvam → Gemini fallback)
+    reply_text = _llm_respond(transcript, farmer_context, language)
+
+    # Step 4: TTS
+    reply_audio_b64 = _sarvam_tts(reply_text, language)
+
+    return JSONResponse({
+        "success": True,
+        "transcript": transcript if used_voice else None,
+        "reply_text": reply_text,
+        "reply_audio": reply_audio_b64,
+        "used_voice": used_voice
+    })
+
 # ================= HISTORY =================
 
 @app.get("/api/stats")
 async def get_stats(request: Request):
-    """Get scan stats and recent disease for dashboard"""
+    """Get scan stats and recent disease for current user only"""
     try:
-        # Total scans
-        all_preds = supabase.table("predictions").select("disease, confidence").order("created_at", desc=True).execute()
-        records = all_preds.data if all_preds.data else []
+        user_id = request.session.get("user_id")
+        if not user_id:
+            return JSONResponse({"success": True, "total": 0, "diseased": 0, "healthy": 0, "recent_disease": None})
+
+        preds = _get_user_predictions(user_id, select_cols="disease, confidence")
+        records = preds.data if preds.data else []
 
         total = len(records)
         healthy = sum(1 for r in records if r.get("disease", "").lower() in ["healthy", "no disease", "none", "no disease detected"])
@@ -1306,7 +1534,9 @@ async def get_stats(request: Request):
         recent_disease = None
         for r in records:
             d = r.get("disease", "")
-            if d.lower() not in ["healthy", "no disease", "none", "no disease detected", "unknown"]:
+            if d.lower() not in ["healthy", "no disease", "none", "no disease detected", "unknown",
+                                  "no plant detected for analysis", "no plant material detected",
+                                  "undeterminable - image insufficient for diagnosis"]:
                 recent_disease = {
                     "disease": d,
                     "confidence": r.get("confidence", 0)
@@ -1321,6 +1551,7 @@ async def get_stats(request: Request):
             "recent_disease": recent_disease
         })
     except Exception as e:
+        logger.error(f"Stats error: {e}")
         return JSONResponse({"success": True, "total": 0, "diseased": 0, "healthy": 0, "recent_disease": None})
 
 @app.get("/history", response_class=HTMLResponse)
@@ -1331,16 +1562,13 @@ def history(request: Request):
         return RedirectResponse(url="/login", status_code=303)
 
     try:
-        data = supabase.table("predictions") \
-            .select("*") \
-            .order("created_at", desc=True) \
-            .execute()
-
+        data = _get_user_predictions(user_id)
         return templates.TemplateResponse("history.html", {
             "request": request,
-            "records": data.data
+            "records": data.data if data.data else []
         })
-    except:
+    except Exception as e:
+        logger.error(f"History error: {e}")
         return templates.TemplateResponse("history.html", {
             "request": request,
             "records": []

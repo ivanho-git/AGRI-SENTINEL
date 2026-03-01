@@ -70,3 +70,21 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =====================================================
+-- 4. ADD user_id TO predictions TABLE (per-user history)
+-- ⚠️ IMPORTANT: Run this to enable per-farmer scan history
+-- =====================================================
+ALTER TABLE predictions ADD COLUMN IF NOT EXISTS user_id UUID;
+
+-- Backfill user_id from farmer_id for existing rows
+-- (farmer_id stores the user UUID as text)
+UPDATE predictions SET user_id = farmer_id::uuid
+WHERE user_id IS NULL AND farmer_id IS NOT NULL
+AND farmer_id != 'WEB_USER'
+AND farmer_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+-- Index for fast per-user queries
+CREATE INDEX IF NOT EXISTS idx_predictions_user_id ON predictions(user_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_farmer_id ON predictions(farmer_id);
+
